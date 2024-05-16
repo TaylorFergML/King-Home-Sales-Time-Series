@@ -19,20 +19,13 @@ duplicated(kingcountysales)
 
 distinct(kingcountysales)
 
-# selecting variables and converting date
+# Selecting variables and converting date
 
 king_time <- kingcountysales %>% 
                 select(sale_date, sale_price, city) %>% 
                 mutate(date = mdy(sale_date))
 
-# splitting date into month and year, filtering variables
-
-king_time <- king_time %>% 
-  mutate(sale_month = month(date)) %>% 
-  mutate(sale_year = year(date)) %>% 
-  select(sale_month, sale_year, sale_price, city)
-
-# converting cities to factors
+# Converting cities to factors
 
 unique(king_time$city)
 
@@ -42,25 +35,49 @@ king_time$city <- as.factor(king_time$city)
 
 sum(is.na(king_time))
 
-# calculating median home sale by month and year
+# Calculating median by month
 
-monthly_median <- king_time %>%
-  group_by(sale_year, sale_month) %>%
-  summarise(median_sale = median(sale_price))
+install.packages("timetk")
 
-# Removing data near the great recession
-monthly_median <- monthly_median %>% filter(sale_year > 2013)
+library(timetk)
 
-# reshaping dataframe
+king_monthly <- 
+  king_time %>% 
+  summarize_by_time(.date_var = date,
+                    .by = "month",
+                    median_sale = median(sale_price, na.rm = TRUE))
 
-wide_monthly_median <- monthly_median %>% 
-  pivot_wider(names_from = sale_month, values_from = median_sale)
+head(king_monthly, 12)
 
-library(zoo)
-library(ggplot2)
-autoplot(zoo(t(monthly_median$median_sale)), facets = NULL)
+# Plotting monthly median sale price
 
+plot_time_series(king_monthly, 
+                 .date_var = date, 
+                 .value = median_sale,
+                 .interactive = TRUE,
+                 .x_lab = "Monthy Data",
+                 .y_lab = "Median Sale price")
 
+# Plotting monthly sales to find the best months to buy or sell homes in King County
 
-glimpse(king_time)                
+plot_seasonal_diagnostics(king_monthly, .date_var = date, .value = median_sale)
+
+# Best month to sell by median home price is June
+
+# Best month to buy is January
+
+# Removing data near housing crisis to see if it changes monthly medians
+
+king_monthly_post2012 <- 
+  king_monthly %>% 
+  filter_by_time(.date_var = date, 
+                 .start_date = "2013",
+                 .end_date = "2024")
+
+head(king_monthly_post2012, 12)
+
+plot_seasonal_diagnostics(king_monthly_post2012, .date_var = date, .value = median_sale)
+
+# This has similar results with June still being the best month to sell
+# but December edging out January as the best month to buy.              
     
