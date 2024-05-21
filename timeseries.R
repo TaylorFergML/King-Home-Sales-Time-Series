@@ -152,3 +152,35 @@ king_final_fit %>%
   forecast(h = "12 months") %>% 
   autoplot(king_monthly_post2012) +
   labs(x = "Month", y = "median home price")
+
+king_final_fit %>% 
+  forecast(h = "12 months") %>% 
+  autoplot() +
+  labs(x = "Month", y = "median home price")
+
+king_monthly_t <- 
+  king_monthly %>% 
+  mutate(date = yearmonth(date)) %>% 
+  as_tsibble(index = date)
+
+# The data ends in December of 2023, but referencing median sales in recent
+# we can see the forecast starts to get to high. I added back in the housing 
+# crisis data and retrained.
+
+king_final_fit_full <- 
+  king_monthly_t %>% 
+  model(stepwise = ARIMA(median_sale),
+        search = ARIMA(median_sale, stepwise=FALSE))
+
+king_final_fit_full %>% 
+  forecast(h = "12 months") %>% 
+  autoplot(king_monthly_t) +
+  labs(x = "Month", y = "median home price")
+
+king_final_fit_full %>% 
+  forecast(h = "12 months") %>% 
+  autoplot() +
+  labs(x = "Month", y = "median home price")
+
+# Adding the full time series makes the model more conservative and makes the 
+# forecast more accurate.
