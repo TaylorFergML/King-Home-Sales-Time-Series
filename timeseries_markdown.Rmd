@@ -1,0 +1,227 @@
+---
+title: "timeseries_markdown"
+author: "Taylor Fergus"
+date: "2024-05-24"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+#### First, exploring the best month to buy and sell a home in King County, Washington
+
+#### I start by uploading the dataset and cleaning it.
+
+```{r}
+library(readr)
+
+kingcountysales <- read_csv("C:/Users/tjf4x/Desktop/R projects/King county home sales/kingcountysales_2000_2023.csv")
+
+# Clean and transforming data
+
+library(tidyverse)
+library(lubridate)
+
+glimpse(kingcountysales)
+
+# Removing duplicates
+
+distinct(kingcountysales)
+```
+
+#### Selecting appropriate variables and converting variables.
+
+#### I converted the cities into factors in case I wanted to do further analysis broken down by city.
+
+```{r}
+# selecting variables and converting date
+
+king_time <- kingcountysales %>% 
+  select(sale_date, sale_price, city) %>% 
+  mutate(date = mdy(sale_date))
+
+# converting cities to factors
+
+unique(king_time$city)
+
+king_time$city <- as.factor(king_time$city)
+
+
+# Checking for missing values
+
+sum(is.na(king_time))
+```
+
+#### Calculating the monthly median home sale and creating a series of plots.
+
+```{r}
+# Calculating median by month
+
+library(timetk)
+
+king_monthly <- 
+  king_time %>% 
+  summarize_by_time(.date_var = date,
+                    .by = "month",
+                    median_sale = median(sale_price, na.rm = TRUE))
+
+head(king_monthly, 12)
+
+# Plotting monthly median sale price
+
+plot_time_series(king_monthly, 
+                 .date_var = date, 
+                 .value = median_sale,
+                 .interactive = TRUE,
+                 .x_lab = "Monthy Data",
+                 .y_lab = "Median Sale price")
+
+# Plotting monthly sales to find best months to buy or sell homes in king county
+
+plot_seasonal_diagnostics(king_monthly, .date_var = date, .value = median_sale)
+
+# Best month to sell by median home price is June
+
+# Best month to buy is January
+```
+
+#### Because more recent trends may effect home sale prices after the housing crisis I removed sales sales before January 2013 to see if there was a change.
+
+```{r}
+# Removing data near housing crisis to see if it changes monthly medians
+
+king_monthly_post2012 <- 
+  king_monthly %>% 
+  filter_by_time(.date_var = date, 
+                 .start_date = "2013",
+                 .end_date = "2024")
+
+glimpse(king_monthly_post2012, 12)
+
+plot_seasonal_diagnostics(king_monthly_post2012, .date_var = date, .value = median_sale)
+
+# This has similar results with June still being the best month to sell
+# but December edging out January as the best month to buy.
+```
+
+#### I wanted to see the accuracy of a simple univariant forecast model of the median home price. I did this using the Fable package and compared a couple different options
+
+```{r}
+# Building a simple univariant forecast model
+# -------------------------------------------
+
+# Creating testing and training split
+
+library(rsample)
+
+king_monthly_split <- initial_time_split(king_monthly_post2012, prop = 130/136)
+
+king_training <- training(king_monthly_split)
+king_testing <- testing(king_monthly_split)
+
+# converting data to a tibble and setting index as date
+
+library(fable)
+library(tsibble)
+
+king_training <- 
+  king_training %>% 
+  mutate(date = yearmonth(date)) %>% 
+  as_tsibble(index = date)
+
+king_testing <- 
+  king_testing %>% 
+  mutate(date = yearmonth(date)) %>% 
+  as_tsibble(index = date)
+
+king_monthly_post2012 <- 
+  king_monthly_post2012 %>% 
+  mutate(date = yearmonth(date)) %>% 
+  as_tsibble(index = date)
+
+# Train the models
+
+library(feasts)
+
+king_fit <- 
+  king_training %>% 
+  model(stepwise = ARIMA(median_sale),
+        search = ARIMA(median_sale, stepwise=FALSE))
+
+# Viewing model
+tidy(king_fit)
+
+king_fit %>% 
+  accuracy() %>% 
+  arrange(MAPE)
+
+# Checking forecast of training data vs full data set
+
+king_fit %>% 
+  forecast(h = "6 months") %>% 
+  autoplot(king_monthly_post2012)
+```
+
+#### The model performed very well. Better than I expected given it is only using past median sales data without any external economic factors
+
+#### I decided to train the model on the full dataset that ends in December of 2023 and see how it performs compared to current monthly median sales.
+
+```{r}
+# final fit on full data set
+
+king_final_fit <- 
+  king_monthly_post2012 %>% 
+  model(stepwise = ARIMA(median_sale),
+        search = ARIMA(median_sale, stepwise=FALSE))
+
+# Fitting final model on full data set
+
+king_final_fit %>% 
+  forecast(h = "12 months") %>% 
+  autoplot(king_monthly_post2012) +
+  labs(x = "Month", y = "median home price")
+
+king_final_fit %>% 
+  forecast(h = "12 months") %>% 
+  autoplot() +
+  labs(x = "Month", y = "median home price")
+
+king_monthly_t <- 
+  king_monthly %>% 
+  mutate(date = yearmonth(date)) %>% 
+  as_tsibble(index = date)
+```
+
+#### Compared to the latest data for April of 2024, the king county median home sale was \$895,000. That is still in the 80% confidence interval but right on the low end. The model is being too optimistic. This is likely because the model has mostly only seen data since the recovery from the 2008 financial crisis.
+
+#### I added the full data set back in (since 2002) and retrained the model.
+
+```{r}
+# The data ends in December of 2023, but referencing median sales in recent
+# we can see the forecast starts to get too optimistic. I added back in the housing 
+# crisis data and retrained.
+
+king_final_fit_full <- 
+  king_monthly_t %>% 
+  model(stepwise = ARIMA(median_sale),
+        search = ARIMA(median_sale, stepwise=FALSE))
+
+king_final_fit_full %>% 
+  forecast(h = "12 months") %>% 
+  autoplot(king_monthly_t) +
+  labs(x = "Month", y = "median home price")
+
+king_final_fit_full %>% 
+  forecast(h = "12 months") %>% 
+  autoplot() +
+  labs(x = "Month", y = "median home price")
+
+# Adding the full time series makes the model more conservative and makes the 
+# forecast more accurate.
+```
+
+#### The model is now almost right on without any additional information. In the future I would like to add in some economic indicators to try and narrow the confidence interval.
