@@ -164,7 +164,7 @@ king_monthly_t <-
   as_tsibble(index = date)
 
 # The data ends in December of 2023, but referencing median sales in recent
-# we can see the forecast starts to get to high. I added back in the housing 
+# we can see the forecast starts to get too optimistic. I added back in the housing 
 # crisis data and retrained.
 
 king_final_fit_full <- 
@@ -184,4 +184,3 @@ king_final_fit_full %>%
 
 # Adding the full time series makes the model more conservative and makes the 
 # forecast more accurate.
-
