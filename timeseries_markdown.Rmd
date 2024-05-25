@@ -76,13 +76,13 @@ head(king_monthly, 12)
 plot_time_series(king_monthly, 
                  .date_var = date, 
                  .value = median_sale,
-                 .interactive = TRUE,
+                 .interactive = FALSE,
                  .x_lab = "Monthy Data",
                  .y_lab = "Median Sale price")
 
 # Plotting monthly sales to find best months to buy or sell homes in king county
 
-plot_seasonal_diagnostics(king_monthly, .date_var = date, .value = median_sale)
+plot_seasonal_diagnostics(king_monthly, .date_var = date, .value = median_sale, .interactive = FALSE)
 
 # Best month to sell by median home price is June
 
@@ -102,7 +102,7 @@ king_monthly_post2012 <-
 
 glimpse(king_monthly_post2012, 12)
 
-plot_seasonal_diagnostics(king_monthly_post2012, .date_var = date, .value = median_sale)
+plot_seasonal_diagnostics(king_monthly_post2012, .date_var = date, .value = median_sale, .interactive = FALSE)
 
 # This has similar results with June still being the best month to sell
 # but December edging out January as the best month to buy.
