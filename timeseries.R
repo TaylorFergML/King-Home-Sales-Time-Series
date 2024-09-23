@@ -146,7 +146,7 @@ king_final_fit <-
   model(stepwise = ARIMA(median_sale),
         search = ARIMA(median_sale, stepwise=FALSE))
 
-# Fitting final model on full data set
+# Forcasting final model on full data set
 
 king_final_fit %>% 
   forecast(h = "12 months") %>% 
@@ -157,11 +157,6 @@ king_final_fit %>%
   forecast(h = "12 months") %>% 
   autoplot() +
   labs(x = "Month", y = "median home price")
-
-king_monthly_t <- 
-  king_monthly %>% 
-  mutate(date = yearmonth(date)) %>% 
-  as_tsibble(index = date)
 
 # The data ends in December of 2023, but referencing median sales in recent
 # we can see the forecast starts to get too optimistic. I added back in the housing 
@@ -184,3 +179,85 @@ king_final_fit_full %>%
 
 # Adding the full time series makes the model more conservative and makes the 
 # forecast more accurate.
+
+# Install necessary package
+install.packages("quantmod")
+
+library(quantmod)
+
+# Get mortgage rate data from FRED (MORTGAGE30US)
+getSymbols("MORTGAGE30US", src = "FRED")
+
+# Check the data
+head(MORTGAGE30US)
+
+# Plotting the data
+chartSeries(MORTGAGE30US)
+
+# Convert MORTGAGE30US to data frame
+mortgage_data <- data.frame(
+  date = index(MORTGAGE30US),          # Extract the date
+  mortgage_rate = coredata(MORTGAGE30US) # Extract the values
+)
+
+# Convert to tibble for better compatibility with tidyverse functions
+mortgage_data <- as_tibble(mortgage_data)
+
+# Inspect the tibble
+glimpse(mortgage_data)
+
+# Get the start and end date of the home sales data
+start_date <- min(king_monthly$date)
+end_date <- max("2023-12-31")
+
+# Filter mortgage data to match the home sales date range
+mortgage_data_filtered <- mortgage_data %>%
+  filter(date >= start_date & date <= end_date)
+
+# Summarizing rate by month
+mortgage_monthly <- 
+  mortgage_data_filtered %>% 
+  summarize_by_time(.date_var = date,
+                    .by = "month",
+                    mean_rate = mean(MORTGAGE30US, na.rm = TRUE))
+
+head(mortgage_monthly, 12)
+
+library(dplyr)
+
+# Merge the filtered mortgage data with the home sales data
+king_combined <- king_monthly %>%
+  left_join(mortgage_monthly, by = "date")
+
+# Inspect the combined data
+glimpse(king_combined)
+
+library(tsibble)
+
+library(fable)
+
+# Convert to tsibble
+king_combined_ts <- king_combined %>%
+  mutate(date = yearmonth(date)) %>%
+  as_tsibble(index = date)
+
+# Verify the tsibble
+glimpse(king_combined_ts)
+
+# Train the ARIMA model with mortgage rates as a regressor
+king_fit_with_mortgage <- king_combined_ts %>%
+  model(
+    arima_with_mortgage = ARIMA(median_sale ~ xreg(mean_rate))
+  )
+
+# Check the model summary
+king_fit_with_mortgage %>% tidy()
+
+# Forecast with the updated model
+king_forecast_with_mortgage <- king_fit_with_mortgage %>%
+  forecast(h = "12 months")
+
+# Plot the forecast
+autoplot(king_forecast_with_mortgage) +
+  labs(x = "Month", y = "Median Sale Price with Mortgage Rates")
+
