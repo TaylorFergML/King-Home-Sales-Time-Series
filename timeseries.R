@@ -1,5 +1,11 @@
 # Time series analysis of home sales in King County Washington
 
+# Install necessary package
+install.packages("quantmod")
+install.packages("timetk")
+install.packages("fable")
+install.packages("feasts")
+
 # Upload data
 
 library(readr)
@@ -36,8 +42,6 @@ king_time$city <- as.factor(king_time$city)
 sum(is.na(king_time))
 
 # Calculating median by month
-
-install.packages("timetk")
 
 library(timetk)
 
@@ -96,7 +100,6 @@ king_testing <- testing(king_monthly_split)
 
 # converting data to a tibble and setting index as date
 
-install.packages("fable")
 library(fable)
 library(tsibble)
 
@@ -116,8 +119,6 @@ king_monthly_post2012 <-
   as_tsibble(index = date)
 
 # Train the models
-
-install.packages("feasts")
 
 library(feasts)
 
@@ -179,9 +180,6 @@ king_final_fit_full %>%
 
 # Adding the full time series makes the model more conservative and makes the 
 # forecast more accurate.
-
-# Install necessary package
-install.packages("quantmod")
 
 library(quantmod)
 
@@ -253,11 +251,35 @@ king_fit_with_mortgage <- king_combined_ts %>%
 # Check the model summary
 king_fit_with_mortgage %>% tidy()
 
-# Forecast with the updated model
-king_forecast_with_mortgage <- king_fit_with_mortgage %>%
-  forecast(h = "12 months")
+# Create rates for forecast
+start_date2 <- min("2024-1-1")
+end_date2 <- max("2024-9-30")
 
-# Plot the forecast
-autoplot(king_forecast_with_mortgage) +
-  labs(x = "Month", y = "Median Sale Price with Mortgage Rates")
+future_mean_rate <- mortgage_data %>%
+  filter(date >= start_date2 & date <= end_date2)
 
+# Summarizing rate by month
+future_monthly <- 
+  future_mean_rate %>% 
+  summarize_by_time(.date_var = date,
+                    .by = "month",
+                    mean_rate = mean(MORTGAGE30US, na.rm = TRUE))
+
+head(future_monthly, 12)
+
+# Convert to tsibble
+future_monthly_ts <- future_monthly %>%
+  mutate(date = yearmonth(date)) %>%
+  as_tsibble(index = date)
+
+# Forecast the next 12 months using the external regressor
+forecast_result <- king_fit_with_mortgage %>%
+  forecast(new_data = future_monthly_ts)
+
+# View the forecast
+forecast_result %>% autoplot(king_combined_ts)
+
+# View the forecast
+forecast_result %>% autoplot()
+
+# 
